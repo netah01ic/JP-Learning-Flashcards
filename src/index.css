@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif, "Microsoft JhengHei", ui-sans-serif, system-ui, sans-serif;
+  --color-bg-deep: #0F172A;
+  --color-card-dark: #1E293B;
+  --color-accent-primary: #38BDF8;
+  --color-text-main: #F8FAFC;
+  --color-text-dim: #94A3B8;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-deep text-text-main antialiased;
+  }
+}
+
+@layer utilities {
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+  .transform-style-3d {
+    transform-style: preserve-3d;
+  }
+  .backface-hidden {
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .rotate-y-180 {
+    transform: rotateY(180deg);
+  }
+  .safari-fix {
+    transform: translateZ(0);
+  }
+  .glass-card {
+    background: rgba(30, 41, 59, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .srs-shadow {
+    box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0F172A;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@keyframes tada {
+  0% { transform: scale(1); }
+  10%, 20% { transform: scale(0.9) rotate(-3deg); }
+  30%, 50%, 70%, 90% { transform: scale(1.05) rotate(3deg); }
+  40%, 60%, 80% { transform: scale(1.05) rotate(-3deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.animate-tada {
+  animation: tada 1.5s ease-in-out infinite;
+}
+
+.markdown-body {
+  line-height: 1.7;
+}
+.markdown-body p {
+  margin-bottom: 1.25rem;
+}
+.markdown-body strong {
+  color: #38BDF8;
+  font-weight: 600;
+}
+.markdown-body h1, .markdown-body h2, .markdown-body h3 {
+  color: #F8FAFC;
+  margin-top: 1.5rem;
+  margin-bottom: 1rem;
+}
+.markdown-body ul, .markdown-body ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}

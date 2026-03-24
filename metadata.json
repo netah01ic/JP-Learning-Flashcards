@@ -1,0 +1,5 @@
+{
+  "name": "日文單字學習卡2026",
+  "description": "一個支援 SRS 間隔重複學習的日文單字閃卡應用，可匯入 Excel/CSV，並具備 AI 單字解析與語音朗讀功能。",
+  "requestFramePermissions": []
+}
