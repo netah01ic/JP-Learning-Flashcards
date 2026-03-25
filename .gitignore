@@ -1,3 +1,8 @@
+node_modules
+dist
+docs
+
+
 # 1. macOS 系統產生的隱藏垃圾檔
 .DS_Store
 .AppleDouble
