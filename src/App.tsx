@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { GoogleGenAI } from '@google/genai';
 import {
   Languages, Info, Trash2, Keyboard, Bot, Upload, Lightbulb, Check,
@@ -148,21 +148,57 @@ export default function App() {
     }
   };
 
-  const processFileData = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      const data = evt.target?.result;
-      if (!data) return;
-      const workbook = XLSX.read(new Uint8Array(data as ArrayBuffer), {
-        type: 'array',
-        codepage: 65001 // Force UTF-8 for CSV files without BOM
+  const parseArrayBufferToJson = async (buffer: ArrayBuffer, fileName: string): Promise<any[][]> => {
+    const isXlsx = fileName.toLowerCase().endsWith('.xlsx') || fileName.toLowerCase().endsWith('.xls');
+    if (isXlsx) {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+      const worksheet = workbook.worksheets[0];
+      const json: any[][] = [];
+      worksheet.eachRow({ includeEmpty: false }, (row) => {
+        json.push(row.values as any[]);
       });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const json = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
-      processData(json);
-    };
-    reader.readAsArrayBuffer(file);
+      // ExcelJS row.values is 1-indexed (index 0 is undefined), normalize:
+      return json.map(row => (row as any[]).slice(1));
+    } else {
+      // CSV: decode as UTF-8 text and parse manually
+      const text = new TextDecoder('utf-8').decode(buffer);
+      return text.split('\n').filter(line => line.trim()).map(line => {
+        const result: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+          const ch = line[i];
+          if (inQuotes) {
+            if (ch === '"' && line[i + 1] === '"') {
+              current += '"';
+              i++;
+            } else if (ch === '"') {
+              inQuotes = false;
+            } else {
+              current += ch;
+            }
+          } else {
+            if (ch === '"') {
+              inQuotes = true;
+            } else if (ch === ',') {
+              result.push(current.trim());
+              current = '';
+            } else {
+              current += ch;
+            }
+          }
+        }
+        result.push(current.trim());
+        return result;
+      });
+    }
+  };
+
+  const processFileData = async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    const json = await parseArrayBufferToJson(buffer, file.name);
+    processData(json);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,12 +236,7 @@ export default function App() {
       const response = await fetch(`/${fileName}`);
       if (!response.ok) throw new Error('File not found');
       const arrayBuffer = await response.arrayBuffer();
-      const workbook = XLSX.read(new Uint8Array(arrayBuffer), {
-        type: 'array',
-        codepage: 65001
-      });
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+      const json = await parseArrayBufferToJson(arrayBuffer, fileName);
       processData(json);
     } catch (error) {
       console.error('Error loading local file:', error);
