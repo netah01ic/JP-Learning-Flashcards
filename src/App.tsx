@@ -233,7 +233,7 @@ export default function App() {
 
   const loadLocalFile = async (fileName: string) => {
     try {
-      const response = await fetch(`/${fileName}`);
+      const response = await fetch(`${import.meta.env.BASE_URL}${fileName}`);
       if (!response.ok) throw new Error('File not found');
       const arrayBuffer = await response.arrayBuffer();
       const json = await parseArrayBufferToJson(arrayBuffer, fileName);
