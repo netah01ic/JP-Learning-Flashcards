@@ -4,7 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import {
   Languages, Info, Trash2, Keyboard, Bot, Upload, Lightbulb, Check,
   Layers, RotateCcw, Brain, ThumbsUp, CheckCircle, Play, ChevronLeft,
-  ChevronRight, Volume2, Pencil, Wand2, Book, X, BookOpen, MessageSquare
+  ChevronRight, Volume2, Pencil, Wand2, Book, X, BookOpen, MessageSquare, Sparkles
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
@@ -26,9 +26,10 @@ export default function App() {
   const [stats, setStats] = useState<Stats>({ again: 0, hard: 0, good: 0, easy: 0 });
   const [exampleColumnIndex, setExampleColumnIndex] = useState(-1);
   const [courseColumnIndex, setCourseColumnIndex] = useState(-1);
-
   const [allCourses, setAllCourses] = useState<string[]>([]);
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
+  const [allPos, setAllPos] = useState<string[]>([]);
+  const [selectedPos, setSelectedPos] = useState<string[]>([]);
   const [isRandomOrder, setIsRandomOrder] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -116,14 +117,17 @@ export default function App() {
 
     const processedRows: any[][] = [];
     const detectedLessons = new Set<string>();
+    const detectedPos = new Set<string>();
 
     rawRows.forEach(row => {
       if (!row || row.length < 2) return;
       const category = row[0]?.toString().trim() || '未分類';
+      const pos = row[6]?.toString().trim() || '其他';
       const front = row[1]?.toString().trim() || '';
 
       if (front) {
         detectedLessons.add(category);
+        detectedPos.add(pos);
         processedRows.push([...row]);
       }
     });
@@ -133,15 +137,18 @@ export default function App() {
       setCardsData(processedRows);
 
       // Detect Example column index among the back fields (index 3+)
-      // Note: Since we updated the rendering, back fields start from Column 4 (idx 3)
       const exColIdx = activeHeaders.findIndex((h, idx) => idx >= 3 && h && (h.toString().includes('例句') || h.toString().toLowerCase().includes('example')));
       setExampleColumnIndex(exColIdx);
 
       const sortedLessons = Array.from(detectedLessons);
       setAllCourses(sortedLessons);
       setSelectedCourses(sortedLessons);
-      setCourseColumnIndex(0); // Col 1 is now always the category
+      
+      const sortedPos = Array.from(detectedPos);
+      setAllPos(sortedPos);
+      setSelectedPos(sortedPos);
 
+      setCourseColumnIndex(0); // Col 1 is now always the category
       setAppState('setup');
     } else {
       alert("檔案中沒有有效的單詞資料！請確保第二欄為單字正面。");
@@ -155,11 +162,38 @@ export default function App() {
       await workbook.xlsx.load(buffer);
       const worksheet = workbook.worksheets[0];
       const json: any[][] = [];
+
       worksheet.eachRow({ includeEmpty: false }, (row) => {
-        json.push(row.values as any[]);
+        const rowData: any[] = [];
+        const values = row.values;
+        
+        if (Array.isArray(values)) {
+          // values[0] 通常是空的，從 index 1 開始
+          for (let i = 1; i < values.length; i++) {
+            const cell = values[i];
+            if (cell && typeof cell === 'object' && 'richText' in cell) {
+              rowData[i - 1] = (cell as any).richText.map((rt: any) => rt.text).join('');
+            } else {
+              rowData[i - 1] = cell;
+            }
+          }
+        } else if (values && typeof values === 'object') {
+          // 處理稀疏行的物件格式
+          Object.keys(values).forEach(key => {
+            const idx = parseInt(key);
+            if (!isNaN(idx) && idx > 0) {
+              const cell = (values as any)[key];
+              if (cell && typeof cell === 'object' && 'richText' in cell) {
+                rowData[idx - 1] = (cell as any).richText.map((rt: any) => rt.text).join('');
+              } else {
+                rowData[idx - 1] = cell;
+              }
+            }
+          });
+        }
+        json.push(rowData);
       });
-      // ExcelJS row.values is 1-indexed (index 0 is undefined), normalize:
-      return json.map(row => (row as any[]).slice(1));
+      return json;
     } else {
       // CSV: decode as UTF-8 text and parse manually
       const text = new TextDecoder('utf-8').decode(buffer);
@@ -247,7 +281,16 @@ export default function App() {
   const startPractice = (data = cardsData, isRandom = isRandomOrder) => {
     let filtered = [...data];
     if (courseColumnIndex !== -1 && selectedCourses.length > 0) {
-      filtered = data.filter(row => selectedCourses.includes(row[courseColumnIndex]?.toString() || '未分類'));
+      filtered = data.filter(row => {
+        const category = row[courseColumnIndex]?.toString().trim() || '未分類';
+        const pos = row[6]?.toString().trim() || '其他';
+        return selectedCourses.includes(category) && selectedPos.includes(pos);
+      });
+    }
+
+    if (filtered.length === 0) {
+      alert("目前的選擇沒有任何卡片！請確認是否勾選了課程。");
+      return;
     }
 
     if (isRandom) {
@@ -375,11 +418,9 @@ export default function App() {
     setIsFlipped(false);
   };
 
-  // Keyboard support
+  // Keyboard support with fresh dependencies to avoid stale closures
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      const { appState, isFlipped, remainingCards, exampleColumnIndex, infoModalOpen, aiModalOpen } = stateRef.current;
-
       if (appState !== 'practice' || remainingCards.length === 0) return;
 
       if (infoModalOpen || aiModalOpen) {
@@ -396,7 +437,7 @@ export default function App() {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         if (!isFlipped) {
-          speakText(remainingCards[0][0]);
+          speakText(remainingCards[0][1]);
         } else if (exampleColumnIndex !== -1 && remainingCards[0][exampleColumnIndex]) {
           speakText(remainingCards[0][exampleColumnIndex]);
         }
@@ -407,16 +448,16 @@ export default function App() {
         e.preventDefault();
         goNext();
       } else if (isFlipped) {
-        if (e.key === '1') { e.preventDefault(); handleSrsAction(null, 'again'); }
-        if (e.key === '2') { e.preventDefault(); handleSrsAction(null, 'hard'); }
-        if (e.key === '3') { e.preventDefault(); handleSrsAction(null, 'good'); }
-        if (e.key === '4') { e.preventDefault(); handleSrsAction(null, 'easy'); }
+        // 支援半形、全形數字與硬體代碼 Digit1-3
+        if (['1', '１'].includes(e.key) || e.code === 'Digit1') { e.preventDefault(); handleSrsAction(null, 'hard'); }
+        if (['2', '２'].includes(e.key) || e.code === 'Digit2') { e.preventDefault(); handleSrsAction(null, 'good'); }
+        if (['3', '３'].includes(e.key) || e.code === 'Digit3') { e.preventDefault(); handleSrsAction(null, 'easy'); }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [appState, isFlipped, remainingCards, infoModalOpen, aiModalOpen, exampleColumnIndex, toggleFlip, handleSrsAction, goPrev, goNext]);
 
   // Text selection tooltip
   useEffect(() => {
@@ -482,6 +523,17 @@ export default function App() {
     } finally {
       setAiLoading(false);
     }
+  };
+
+  const formatSymbolicText = (text: any) => {
+    if (!text) return text;
+    const str = text.toString();
+    const parts = str.split(/([○↓])/g);
+    return parts.map((part, i) => (
+      (part === '○' || part === '↓') 
+        ? <span key={i} className="text-orange-500 font-bold">{part}</span> 
+        : part
+    ));
   };
 
   const currentCard = remainingCards[0];
@@ -592,7 +644,7 @@ export default function App() {
                   <span className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">OR QUICK START</span>
                   <div className="h-px flex-1 bg-white/5"></div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                   <button
                     onClick={() => loadLocalFile('MNNvocab_reviewed_final.csv')}
                     className="flex items-center gap-4 p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-sky-500/30 hover:bg-sky-500/10 transition-all text-left group"
@@ -601,8 +653,20 @@ export default function App() {
                       <BookOpen size={24} />
                     </div>
                     <div>
-                      <p className="text-white font-bold">大家的日本語</p>
-                      <p className="text-slate-500 text-xs">基礎 50 課單字庫</p>
+                      <p className="text-white font-bold whitespace-nowrap">大家的日本語</p>
+                      <p className="text-slate-500 text-xs text-nowrap">基礎 50 課</p>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => loadLocalFile('Irodori_入門_words.csv')}
+                    className="flex items-center gap-4 p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-orange-500/30 hover:bg-orange-500/10 transition-all text-left group"
+                  >
+                    <div className="p-3 rounded-xl bg-orange-500/20 text-orange-400 group-hover:bg-orange-500 group-hover:text-white transition-all">
+                      <Sparkles size={24} />
+                    </div>
+                    <div>
+                      <p className="text-white font-bold whitespace-nowrap">いろどり入門</p>
+                      <p className="text-slate-500 text-xs text-nowrap">生活日語單字</p>
                     </div>
                   </button>
                   <button
@@ -613,8 +677,8 @@ export default function App() {
                       <MessageSquare size={24} />
                     </div>
                     <div>
-                      <p className="text-white font-bold">基礎常用短句</p>
-                      <p className="text-slate-500 text-xs">實用情境會話精選</p>
+                      <p className="text-white font-bold whitespace-nowrap">基礎常用短句</p>
+                      <p className="text-slate-500 text-xs text-nowrap">實用情境會話</p>
                     </div>
                   </button>
                 </div>
@@ -652,7 +716,7 @@ export default function App() {
                 )}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
                 {allCourses.length > 0 ? (
                   allCourses.map(course => (
                     <label key={course} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all cursor-pointer group ${selectedCourses.includes(course) ? 'bg-sky-500/10 border-sky-500/30 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:border-white/10'}`}>
@@ -678,7 +742,51 @@ export default function App() {
                   ))
                 ) : (
                   <div className="col-span-2 py-10 text-center bg-white/5 rounded-2xl border border-dashed border-white/10">
-                    <p className="text-slate-500">檔案中未偵測到課程欄位，將會練習所有單字。</p>
+                    <p className="text-slate-500">檔案中未偵測到課程欄位。</p>
+                  </div>
+                )}
+              </div>
+
+              {/* POS Selection */}
+              <div className="flex items-center justify-between mt-4">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Pencil size={20} className="text-emerald-400" /> 選擇品詞
+                </h3>
+                {allPos.length > 0 && (
+                  <button
+                    onClick={() => setSelectedPos(selectedPos.length === allPos.length ? [] : [...allPos])}
+                    className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg hover:bg-emerald-500 hover:text-white transition-all"
+                  >
+                    {selectedPos.length === allPos.length ? '取消全選' : '全選'}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                {allPos.length > 0 ? (
+                  allPos.map(pos => (
+                    <label key={pos} className={`flex items-center gap-2 p-2.5 rounded-xl border transition-all cursor-pointer group ${selectedPos.includes(pos) ? 'bg-emerald-500/10 border-emerald-500/30 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:border-white/10'}`}>
+                      <input
+                        type="checkbox"
+                        className="hidden"
+                        checked={selectedPos.includes(pos)}
+                        onChange={() => {
+                          if (selectedPos.includes(pos)) {
+                            setSelectedPos(selectedPos.filter(p => p !== pos));
+                          } else {
+                            setSelectedPos([...selectedPos, pos]);
+                          }
+                        }}
+                      />
+                      <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${selectedPos.includes(pos) ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600 group-hover:border-slate-400'}`}>
+                        {selectedPos.includes(pos) && <Check size={12} className="text-slate-900 font-bold" />}
+                      </div>
+                      <span className="text-[10px] font-medium truncate">{pos}</span>
+                    </label>
+                  ))
+                ) : (
+                  <div className="col-span-2 py-10 text-center bg-white/5 rounded-2xl border border-dashed border-white/10">
+                    <p className="text-slate-500">檔案中未偵測到品詞資料。</p>
                   </div>
                 )}
               </div>
@@ -744,17 +852,17 @@ export default function App() {
                   <p className="text-slate-500 text-xs uppercase tracking-widest font-bold mb-1">總計卡片</p>
                   <p className="text-white text-2xl font-black">{initialTotalCards}</p>
                 </div>
-                <div className="bg-amber-500/10 p-5 rounded-2xl border border-amber-500/10">
-                  <p className="text-amber-500 text-xs uppercase tracking-widest font-bold mb-1">Again</p>
-                  <p className="text-amber-400 text-2xl font-black">{stats.again}</p>
-                </div>
                 <div className="bg-rose-500/10 p-5 rounded-2xl border border-rose-500/10">
                   <p className="text-rose-500 text-xs uppercase tracking-widest font-bold mb-1">Hard</p>
                   <p className="text-rose-400 text-2xl font-black">{stats.hard}</p>
                 </div>
-                <div className="bg-sky-500/10 p-5 rounded-2xl border border-sky-500/10">
-                  <p className="text-sky-500 text-xs uppercase tracking-widest font-bold mb-1">Good</p>
-                  <p className="text-sky-400 text-2xl font-black">{stats.good}</p>
+                <div className="bg-amber-500/10 p-5 rounded-2xl border border-amber-500/10">
+                  <p className="text-amber-500 text-xs uppercase tracking-widest font-bold mb-1">Good</p>
+                  <p className="text-amber-400 text-2xl font-black">{stats.good}</p>
+                </div>
+                <div className="bg-emerald-500/10 p-5 rounded-2xl border border-emerald-500/10">
+                  <p className="text-emerald-500 text-xs uppercase tracking-widest font-bold mb-1">Easy</p>
+                  <p className="text-emerald-400 text-2xl font-black">{stats.easy}</p>
                 </div>
               </div>
 
@@ -792,15 +900,11 @@ export default function App() {
             </div>
             <div className="flex gap-4 text-xs font-bold tracking-widest uppercase">
               <div className="flex flex-col items-center">
-                <span className="text-amber-500 mb-1">{stats.again}</span>
-                <span className="text-slate-500">Again</span>
-              </div>
-              <div className="flex flex-col items-center">
                 <span className="text-rose-500 mb-1">{stats.hard}</span>
                 <span className="text-slate-500">Hard</span>
               </div>
               <div className="flex flex-col items-center">
-                <span className="text-sky-500 mb-1">{stats.good}</span>
+                <span className="text-amber-500 mb-1">{stats.good}</span>
                 <span className="text-slate-500">Good</span>
               </div>
               <div className="flex flex-col items-center">
@@ -839,9 +943,9 @@ export default function App() {
                       )}
                       <div className="relative z-10 flex flex-col items-center gap-6 text-center">
                         <div className="flex flex-col items-center gap-2">
-                          <h1 className="text-6xl sm:text-8xl m-0 font-bold text-white tracking-tight leading-tight">{frontWord}</h1>
+                          <h1 className="text-5xl sm:text-7xl m-0 font-bold text-white tracking-tight leading-tight">{formatSymbolicText(frontWord)}</h1>
                           {frontSubText && (
-                            <p className="text-2xl sm:text-3xl text-sky-400/80 font-medium m-0">{frontSubText}</p>
+                            <p className="text-2xl sm:text-3xl text-sky-400/80 font-medium m-0">{formatSymbolicText(frontSubText)}</p>
                           )}
                         </div>
                         <button onClick={(e) => { e.stopPropagation(); speakText(frontWord); }} className="bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-slate-900 transition-all rounded-2xl p-4 shadow-lg active:scale-90" title="朗讀單字">
@@ -863,11 +967,11 @@ export default function App() {
                                 <span className="text-sky-400/60 text-xs font-bold uppercase tracking-[0.2em]">{field.label}</span>
                                 {isExample ? (
                                   <div className="bg-emerald-500/5 border-l-4 border-emerald-500 p-6 rounded-r-2xl italic text-emerald-100/90 text-2xl leading-relaxed font-serif">
-                                    {field.value}
+                                    {formatSymbolicText(field.value)}
                                   </div>
                                 ) : (
                                   <div className="text-white text-3xl font-medium leading-relaxed tracking-wide">
-                                    {field.value}
+                                    {formatSymbolicText(field.value)}
                                   </div>
                                 )}
                                 {isExample && (
@@ -894,21 +998,17 @@ export default function App() {
           {/* SRS Controls - Fixed at bottom for practice state */}
           <div className={`w-full max-w-2xl px-4 transition-all duration-500 transform ${isFlipped ? 'translate-y-0 opacity-100' : 'translate-y-10 opacity-0 pointer-events-none'}`}>
             <div className="glass-card p-4 rounded-[2rem] border border-white/10 flex gap-3 shadow-2xl">
-              <button onClick={(e) => handleSrsAction(e, 'again')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
-                <span className="text-lg">Again</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 1</span>
-              </button>
               <button onClick={(e) => handleSrsAction(e, 'hard')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
                 <span className="text-lg">Hard</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 2</span>
+                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 1</span>
               </button>
-              <button onClick={(e) => handleSrsAction(e, 'good')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-sky-500/10 text-sky-500 hover:bg-sky-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
+              <button onClick={(e) => handleSrsAction(e, 'good')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
                 <span className="text-lg">Good</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 3</span>
+                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 2</span>
               </button>
               <button onClick={(e) => handleSrsAction(e, 'easy')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
                 <span className="text-lg">Easy</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 4</span>
+                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 3</span>
               </button>
             </div>
           </div>
@@ -929,7 +1029,7 @@ export default function App() {
               {[
                 { key: 'Space', desc: '翻轉卡片', color: 'bg-sky-500/20 text-sky-400' },
                 { key: 'Enter', desc: '手動播放發音', color: 'bg-emerald-500/20 text-emerald-400' },
-                { key: '1-4', desc: '標記記憶程度 (SRS)', color: 'bg-amber-500/20 text-amber-400' },
+                { key: '1-3', desc: '標記記憶程度 (SRS)', color: 'bg-rose-500/20 text-rose-400' },
                 { key: '← / →', desc: '瀏覽上/下張卡片', color: 'bg-slate-500/20 text-slate-400' },
               ].map((item, i) => (
                 <div key={i} className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5 group hover:border-white/10 transition-colors">
