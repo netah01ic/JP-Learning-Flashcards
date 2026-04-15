@@ -44,7 +44,9 @@ export default function App() {
 
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({ display: 'none' });
   const [selectedText, setSelectedText] = useState('');
+  const [speechRate, setSpeechRate] = useState(0.8);
 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const stateRef = useRef({ appState, isFlipped, remainingCards, exampleColumnIndex, infoModalOpen, aiModalOpen });
 
   useEffect(() => {
@@ -60,6 +62,18 @@ export default function App() {
     }
     return newArr;
   };
+
+  // 預載語音清單 (解決 Safari getVoices() 延遲問題)
+  useEffect(() => {
+    const loadVoices = () => {
+      window.speechSynthesis.getVoices();
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
 
   // Load progress
   useEffect(() => {
@@ -317,9 +331,32 @@ export default function App() {
 
   const speakText = (text: string) => {
     if (!text) return;
+
+    // 停止之前的發音
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
     window.speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'ja-JP';
+
+    let voices = window.speechSynthesis.getVoices();
+    if (voices.length === 0) voices = window.speechSynthesis.getVoices();
+
+    const allJaVoices = voices.filter(v => v.lang.toLowerCase().replace('_', '-').includes('ja'));
+    const highQualityJaVoices = allJaVoices.filter(v => !v.voiceURI.includes('compact'));
+
+    if (highQualityJaVoices.length > 0) {
+      utterance.voice = highQualityJaVoices[0];
+    } else if (voices.find(v => v.name === 'Google 日本語')) {
+      utterance.voice = voices.find(v => v.name === 'Google 日本語') || null;
+    }
+    
+    utterance.rate = speechRate;
+    utterance.pitch = 1.0;
+
     window.speechSynthesis.speak(utterance);
   };
 
@@ -951,6 +988,23 @@ export default function App() {
                         <button onClick={(e) => { e.stopPropagation(); speakText(frontWord); }} className="bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-slate-900 transition-all rounded-2xl p-4 shadow-lg active:scale-90" title="朗讀單字">
                           <Volume2 size={40} />
                         </button>
+                        {/* 語速調整滑桿 */}
+                        <div className="flex flex-col items-center gap-1.5 w-40" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex justify-between w-full text-[11px] font-medium px-0.5">
+                            <span className="text-slate-500">0.3</span>
+                            <span className="text-sky-400 font-bold">{speechRate.toFixed(1)}</span>
+                            <span className="text-slate-500">1.2</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.3"
+                            max="1.2"
+                            step="0.1"
+                            value={speechRate}
+                            onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-slate-700 accent-sky-500"
+                          />
+                        </div>
                         <div className="mt-4 text-slate-500 text-sm font-medium tracking-[0.3em] uppercase">點擊翻面查看</div>
                       </div>
                     </div>
