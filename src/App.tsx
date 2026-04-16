@@ -23,6 +23,7 @@ export default function App() {
   const [headers, setHeaders] = useState<string[]>([]);
   const [remainingCards, setRemainingCards] = useState<any[][]>([]);
   const [initialTotalCards, setInitialTotalCards] = useState(0);
+  const [answeredCount, setAnsweredCount] = useState(0);
   const [stats, setStats] = useState<Stats>({ again: 0, hard: 0, good: 0, easy: 0 });
   const [exampleColumnIndex, setExampleColumnIndex] = useState(-1);
   const [courseColumnIndex, setCourseColumnIndex] = useState(-1);
@@ -45,8 +46,10 @@ export default function App() {
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({ display: 'none' });
   const [selectedText, setSelectedText] = useState('');
   const [speechRate, setSpeechRate] = useState(0.8);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const swipeBlockClick = useRef(false);
   const stateRef = useRef({ appState, isFlipped, remainingCards, exampleColumnIndex, infoModalOpen, aiModalOpen });
 
   useEffect(() => {
@@ -85,6 +88,7 @@ export default function App() {
         setHeaders(parsed.headers);
         setRemainingCards(parsed.remainingCards);
         setInitialTotalCards(parsed.initialTotalCards);
+        setAnsweredCount(parsed.answeredCount || 0);
         setStats(parsed.stats);
         setExampleColumnIndex(parsed.exampleColumnIndex);
         setCourseColumnIndex(parsed.courseColumnIndex || -1);
@@ -112,6 +116,7 @@ export default function App() {
         headers,
         remainingCards,
         initialTotalCards,
+        answeredCount,
         stats,
         exampleColumnIndex,
         courseColumnIndex,
@@ -313,6 +318,7 @@ export default function App() {
 
     setRemainingCards(filtered);
     setInitialTotalCards(filtered.length);
+    setAnsweredCount(0);
     setStats({ again: 0, hard: 0, good: 0, easy: 0 });
     setAppState('practice');
     setIsFlipped(false);
@@ -373,6 +379,10 @@ export default function App() {
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
+    if (swipeBlockClick.current) {
+      swipeBlockClick.current = false;
+      return;
+    }
     if (window.getSelection()?.toString().trim().length || 0 > 0) return;
     toggleFlip();
   };
@@ -386,6 +396,8 @@ export default function App() {
     newRemaining.shift();
 
     const newStats = { ...stats };
+
+    const nextCount = answeredCount + 1;
 
     if (action === 'again') {
       newStats.again++;
@@ -419,17 +431,20 @@ export default function App() {
       setTimeout(() => {
         setRemainingCards(newRemaining);
         setStats(newStats);
+        setAnsweredCount(nextCount);
         setShowEasyStamp(false);
         setIsAnimating(false);
-        if (newRemaining.length === 0) {
+        if (nextCount >= initialTotalCards || newRemaining.length === 0) {
           setAppState('summary');
           clearProgress();
         }
       }, 800);
-      return; // prevent immediate state check
+      return; 
     }
 
-    if (newRemaining.length === 0) {
+    setAnsweredCount(nextCount);
+
+    if (nextCount >= initialTotalCards || newRemaining.length === 0) {
       setAppState('summary');
       clearProgress();
     }
@@ -484,8 +499,8 @@ export default function App() {
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
         goNext();
-      } else if (isFlipped) {
-        // 支援半形、全形數字與硬體代碼 Digit1-3
+      } else {
+        // 支援半形、全形數字與硬體代碼 Digit1-3，正反面均有效
         if (['1', '１'].includes(e.key) || e.code === 'Digit1') { e.preventDefault(); handleSrsAction(null, 'hard'); }
         if (['2', '２'].includes(e.key) || e.code === 'Digit2') { e.preventDefault(); handleSrsAction(null, 'good'); }
         if (['3', '３'].includes(e.key) || e.code === 'Digit3') { e.preventDefault(); handleSrsAction(null, 'easy'); }
@@ -928,12 +943,12 @@ export default function App() {
           {/* Top Dashboard */}
           <div className="glass-card flex items-center justify-between w-full px-8 py-5 rounded-[1.5rem] mb-8 gap-6">
             <div className="font-mono text-2xl font-bold text-white leading-none">
-              <span className="text-sky-400">{initialTotalCards - remainingCards.length + 1}</span>
+              <span className="text-sky-400">{Math.min(answeredCount + 1, initialTotalCards)}</span>
               <span className="text-slate-600 text-lg mx-1">/</span>
               <span className="text-slate-400 text-lg">{initialTotalCards}</span>
             </div>
             <div className="flex-1 bg-white/5 rounded-full h-1.5 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-500" style={{ width: `${((initialTotalCards - remainingCards.length + 1) / initialTotalCards) * 100}%` }}></div>
+              <div className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 transition-all duration-500" style={{ width: `${(Math.min(answeredCount + 1, initialTotalCards) / initialTotalCards) * 100}%` }}></div>
             </div>
             <div className="flex gap-4 text-xs font-bold tracking-widest uppercase">
               <div className="flex flex-col items-center">
@@ -958,7 +973,104 @@ export default function App() {
             </button>
 
             {/* Scene */}
-            <div className="perspective-1000 w-full h-[480px] sm:h-[560px] flex-1">
+            <div
+              className="perspective-1000 w-full h-[480px] sm:h-[560px] flex-1"
+              onMouseDown={(e) => {
+                const start = { x: e.clientX, y: e.clientY };
+
+                const handleMove = (ev: MouseEvent) => {
+                  setDragOffset({ x: ev.clientX - start.x, y: ev.clientY - start.y });
+                };
+
+                const handleUp = (ev: MouseEvent) => {
+                  document.removeEventListener('mousemove', handleMove);
+                  document.removeEventListener('mouseup', handleUp);
+                  const dx = ev.clientX - start.x;
+                  const dy = ev.clientY - start.y;
+                  const absDx = Math.abs(dx);
+                  const absDy = Math.abs(dy);
+                  const threshold = 50;
+                  setDragOffset({ x: 0, y: 0 });
+                  if (absDx > threshold && absDx > absDy) {
+                    swipeBlockClick.current = true;
+                    if (dx > 0) handleSrsAction(null, 'easy');
+                    else handleSrsAction(null, 'hard');
+                  } else if (absDy > threshold && absDy > absDx && dy < 0) {
+                    swipeBlockClick.current = true;
+                    handleSrsAction(null, 'good');
+                  }
+                };
+
+                document.addEventListener('mousemove', handleMove);
+                document.addEventListener('mouseup', handleUp);
+              }}
+              onTouchStart={(e) => {
+                const t = e.changedTouches[0];
+                (e.currentTarget as any)._touchStart = { x: t.clientX, y: t.clientY };
+              }}
+              onTouchMove={(e) => {
+                const start = (e.currentTarget as any)._touchStart;
+                if (!start) return;
+                const t = e.changedTouches[0];
+                setDragOffset({ x: t.clientX - start.x, y: t.clientY - start.y });
+              }}
+              onTouchEnd={(e) => {
+                const start = (e.currentTarget as any)._touchStart;
+                if (!start) return;
+                const t = e.changedTouches[0];
+                const dx = t.clientX - start.x;
+                const dy = t.clientY - start.y;
+                const absDx = Math.abs(dx);
+                const absDy = Math.abs(dy);
+                const threshold = 50;
+                setDragOffset({ x: 0, y: 0 });
+                if (absDx > threshold && absDx > absDy) {
+                  e.preventDefault();
+                  if (dx > 0) handleSrsAction(null, 'easy');
+                  else handleSrsAction(null, 'hard');
+                } else if (absDy > threshold && absDy > absDx && dy < 0) {
+                  e.preventDefault();
+                  handleSrsAction(null, 'good');
+                }
+              }}
+            >
+              {/* Drag transform wrapper */}
+              <div
+                className="w-full h-full relative"
+                style={{
+                  transform: dragOffset.x !== 0 || dragOffset.y !== 0
+                    ? `translateX(${dragOffset.x * 0.35}px) translateY(${dragOffset.y * 0.2}px) rotate(${dragOffset.x * 0.04}deg)`
+                    : 'translateX(0) translateY(0) rotate(0deg)',
+                  transition: dragOffset.x === 0 && dragOffset.y === 0
+                    ? 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    : 'none',
+                }}
+              >
+                {/* Easy overlay (右滑) */}
+                <div className="absolute inset-0 rounded-[2.5rem] z-30 pointer-events-none flex items-center justify-start pl-8 overflow-hidden" style={{
+                  opacity: Math.min(Math.max(dragOffset.x - 30, 0) / 80, 1),
+                  background: `rgba(16,185,129,${Math.min(Math.max(dragOffset.x - 30, 0) / 150, 0.25)})`,
+                  border: `3px solid rgba(16,185,129,${Math.min(Math.max(dragOffset.x - 30, 0) / 80, 0.8)})`,
+                }}>
+                  <span className="text-5xl font-black text-emerald-400 tracking-widest rotate-[-15deg] drop-shadow-lg">EASY</span>
+                </div>
+                {/* Hard overlay (左滑) */}
+                <div className="absolute inset-0 rounded-[2.5rem] z-30 pointer-events-none flex items-center justify-end pr-8 overflow-hidden" style={{
+                  opacity: Math.min(Math.max(-dragOffset.x - 30, 0) / 80, 1),
+                  background: `rgba(239,68,68,${Math.min(Math.max(-dragOffset.x - 30, 0) / 150, 0.25)})`,
+                  border: `3px solid rgba(239,68,68,${Math.min(Math.max(-dragOffset.x - 30, 0) / 80, 0.8)})`,
+                }}>
+                  <span className="text-5xl font-black text-rose-400 tracking-widest rotate-[15deg] drop-shadow-lg">HARD</span>
+                </div>
+                {/* Good overlay (上滑) */}
+                <div className="absolute inset-0 rounded-[2.5rem] z-30 pointer-events-none flex items-end justify-center pb-10 overflow-hidden" style={{
+                  opacity: Math.min(Math.max(-dragOffset.y - 30, 0) / 80, 1),
+                  background: `rgba(245,158,11,${Math.min(Math.max(-dragOffset.y - 30, 0) / 150, 0.25)})`,
+                  border: `3px solid rgba(245,158,11,${Math.min(Math.max(-dragOffset.y - 30, 0) / 80, 0.8)})`,
+                }}>
+                  <span className="text-5xl font-black text-amber-400 tracking-widest drop-shadow-lg">GOOD</span>
+                </div>
+
               {(() => {
                 const frontWord = remainingCards[0][1];
                 const frontSubText = remainingCards[0][2];
@@ -980,7 +1092,11 @@ export default function App() {
                       )}
                       <div className="relative z-10 flex flex-col items-center gap-6 text-center">
                         <div className="flex flex-col items-center gap-2">
-                          <h1 className="text-5xl sm:text-7xl m-0 font-bold text-white tracking-tight leading-tight">{formatSymbolicText(frontWord)}</h1>
+                        <h1 className={`m-0 font-bold text-white tracking-tight leading-tight ${
+                            frontWord.length > 20 ? 'text-3xl sm:text-5xl' :
+                            frontWord.length > 10 ? 'text-4xl sm:text-6xl' :
+                            'text-5xl sm:text-7xl'
+                          }`}>{formatSymbolicText(frontWord)}</h1>
                           {frontSubText && (
                             <p className="text-2xl sm:text-3xl text-sky-400/80 font-medium m-0">{formatSymbolicText(frontSubText)}</p>
                           )}
@@ -989,7 +1105,7 @@ export default function App() {
                           <Volume2 size={40} />
                         </button>
                         {/* 語速調整滑桿 */}
-                        <div className="flex flex-col items-center gap-1.5 w-40" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-col items-center gap-1.5 w-44" onClick={(e) => e.stopPropagation()}>
                           <div className="flex justify-between w-full text-[11px] font-medium px-0.5">
                             <span className="text-slate-500">0.3</span>
                             <span className="text-sky-400 font-bold">{speechRate.toFixed(1)}</span>
@@ -1002,7 +1118,7 @@ export default function App() {
                             step="0.1"
                             value={speechRate}
                             onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                            className="w-full h-1.5 rounded-full appearance-none cursor-pointer bg-slate-700 accent-sky-500"
+                            className="w-full h-3 rounded-full appearance-none cursor-pointer bg-slate-700 accent-sky-500 py-2"
                           />
                         </div>
                         <div className="mt-4 text-slate-500 text-sm font-medium tracking-[0.3em] uppercase">點擊翻面查看</div>
@@ -1042,6 +1158,7 @@ export default function App() {
                   </div>
                 );
               })()}
+              </div> {/* end drag wrapper */}
             </div>
 
             <button onClick={goNext} className="z-10 bg-[#1E293B]/80 hover:bg-[#1E293B] border border-white/5 rounded-2xl w-14 h-24 flex items-center justify-center text-slate-500 cursor-pointer backdrop-blur-sm transition-all hover:text-white hover:border-white/20 active:scale-95 shrink-0 shadow-lg" title="下一張">
@@ -1054,15 +1171,15 @@ export default function App() {
             <div className="glass-card p-4 rounded-[2rem] border border-white/10 flex gap-3 shadow-2xl">
               <button onClick={(e) => handleSrsAction(e, 'hard')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
                 <span className="text-lg">Hard</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 1</span>
+                <span className="hidden sm:block text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 1</span>
               </button>
               <button onClick={(e) => handleSrsAction(e, 'good')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
                 <span className="text-lg">Good</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 2</span>
+                <span className="hidden sm:block text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 2</span>
               </button>
               <button onClick={(e) => handleSrsAction(e, 'easy')} className="flex-1 flex flex-col items-center gap-1 py-4 rounded-2xl bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-all font-bold srs-shadow active:scale-95 group">
                 <span className="text-lg">Easy</span>
-                <span className="text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 3</span>
+                <span className="hidden sm:block text-[10px] opacity-60 group-hover:opacity-100 uppercase tracking-tighter">Key 3</span>
               </button>
             </div>
           </div>
