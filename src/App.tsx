@@ -162,7 +162,7 @@ export default function App() {
       const sortedLessons = Array.from(detectedLessons);
       setAllCourses(sortedLessons);
       setSelectedCourses(sortedLessons);
-      
+
       const sortedPos = Array.from(detectedPos);
       setAllPos(sortedPos);
       setSelectedPos(sortedPos);
@@ -185,7 +185,7 @@ export default function App() {
       worksheet.eachRow({ includeEmpty: false }, (row) => {
         const rowData: any[] = [];
         const values = row.values;
-        
+
         if (Array.isArray(values)) {
           // values[0] 通常是空的，從 index 1 開始
           for (let i = 1; i < values.length; i++) {
@@ -286,7 +286,10 @@ export default function App() {
 
   const loadLocalFile = async (fileName: string) => {
     try {
-      const response = await fetch(`${import.meta.env.BASE_URL}${fileName}`);
+      const baseUrl = import.meta.env.BASE_URL.endsWith('/')
+        ? import.meta.env.BASE_URL
+        : `${import.meta.env.BASE_URL}/`;
+      const response = await fetch(`${baseUrl}${fileName}`);
       if (!response.ok) throw new Error('File not found');
       const arrayBuffer = await response.arrayBuffer();
       const json = await parseArrayBufferToJson(arrayBuffer, fileName);
@@ -359,7 +362,7 @@ export default function App() {
     } else if (voices.find(v => v.name === 'Google 日本語')) {
       utterance.voice = voices.find(v => v.name === 'Google 日本語') || null;
     }
-    
+
     utterance.rate = speechRate;
     utterance.pitch = 1.0;
 
@@ -439,7 +442,7 @@ export default function App() {
           clearProgress();
         }
       }, 800);
-      return; 
+      return;
     }
 
     setAnsweredCount(nextCount);
@@ -582,8 +585,8 @@ export default function App() {
     const str = text.toString();
     const parts = str.split(/([○↓])/g);
     return parts.map((part, i) => (
-      (part === '○' || part === '↓') 
-        ? <span key={i} className="text-orange-500 font-bold">{part}</span> 
+      (part === '○' || part === '↓')
+        ? <span key={i} className="text-orange-500 font-bold">{part}</span>
         : part
     ));
   };
@@ -653,7 +656,7 @@ export default function App() {
           <div className="glass-card p-10 rounded-[2rem] text-center w-full max-w-2xl border border-white/5 relative overflow-hidden group">
             <div className="absolute inset-0 bg-gradient-to-br from-sky-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
             <div className="relative z-10 flex flex-col items-center gap-8">
-              <label 
+              <label
                 onDragOver={handleDragOver}
                 onDragEnter={handleDragEnter}
                 onDragLeave={handleDragLeave}
@@ -1071,93 +1074,92 @@ export default function App() {
                   <span className="text-5xl font-black text-amber-400 tracking-widest drop-shadow-lg">GOOD</span>
                 </div>
 
-              {(() => {
-                const frontWord = remainingCards[0][1];
-                const frontSubText = remainingCards[0][2];
-                const backFields = headers.slice(3).map((h, i) => ({
-                  label: h || `欄位 ${i + 4}`,
-                  value: remainingCards[0][i + 3]
-                })).filter(f => f.value && f.value.toString().trim());
+                {(() => {
+                  const frontWord = remainingCards[0][1];
+                  const frontSubText = remainingCards[0][2];
+                  const backFields = headers.slice(3).map((h, i) => ({
+                    label: h || `欄位 ${i + 4}`,
+                    value: remainingCards[0][i + 3]
+                  })).filter(f => f.value && f.value.toString().trim());
 
-                return (
-                  <div className={`w-full h-full relative transition-transform duration-700 transform-style-3d cursor-pointer ${isFlipped ? 'rotate-y-180' : ''}`} onClick={handleCardClick}>
+                  return (
+                    <div className={`w-full h-full relative transition-transform duration-700 transform-style-3d cursor-pointer ${isFlipped ? 'rotate-y-180' : ''}`} onClick={handleCardClick}>
 
-                    {/* Front */}
-                    <div className="absolute w-full h-full backface-hidden bg-[#1E293B] rounded-[2.5rem] shadow-2xl border border-white/5 flex flex-col items-center justify-center p-10 overflow-hidden group/card [transform:translateZ(1px)]">
-                      <div className="absolute inset-0 bg-gradient-to-br from-sky-500/10 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500"></div>
-                      {showEasyStamp && (
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-12 text-5xl font-black text-emerald-500 border-[10px] border-emerald-500 rounded-3xl px-10 py-5 bg-[#0F172A]/90 z-20 shadow-2xl tracking-[0.2em] uppercase pointer-events-none animate-bounce">
-                          学んだ
-                        </div>
-                      )}
-                      <div className="relative z-10 flex flex-col items-center gap-6 text-center">
-                        <div className="flex flex-col items-center gap-2">
-                        <h1 className={`m-0 font-bold text-white tracking-tight leading-tight ${
-                            frontWord.length > 20 ? 'text-3xl sm:text-5xl' :
-                            frontWord.length > 10 ? 'text-4xl sm:text-6xl' :
-                            'text-5xl sm:text-7xl'
-                          }`}>{formatSymbolicText(frontWord)}</h1>
-                          {frontSubText && (
-                            <p className="text-2xl sm:text-3xl text-sky-400/80 font-medium m-0">{formatSymbolicText(frontSubText)}</p>
-                          )}
-                        </div>
-                        <button onClick={(e) => { e.stopPropagation(); speakText(frontWord); }} className="bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-slate-900 transition-all rounded-2xl p-4 shadow-lg active:scale-90" title="朗讀單字">
-                          <Volume2 size={40} />
-                        </button>
-                        {/* 語速調整滑桿 */}
-                        <div className="flex flex-col items-center gap-1.5 w-44" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex justify-between w-full text-[11px] font-medium px-0.5">
-                            <span className="text-slate-500">0.3</span>
-                            <span className="text-sky-400 font-bold">{speechRate.toFixed(1)}</span>
-                            <span className="text-slate-500">1.2</span>
+                      {/* Front */}
+                      <div className="absolute w-full h-full backface-hidden bg-[#1E293B] rounded-[2.5rem] shadow-2xl border border-white/5 flex flex-col items-center justify-center p-10 overflow-hidden group/card [transform:translateZ(1px)]">
+                        <div className="absolute inset-0 bg-gradient-to-br from-sky-500/10 to-transparent opacity-0 group-hover/card:opacity-100 transition-opacity duration-500"></div>
+                        {showEasyStamp && (
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-12 text-5xl font-black text-emerald-500 border-[10px] border-emerald-500 rounded-3xl px-10 py-5 bg-[#0F172A]/90 z-20 shadow-2xl tracking-[0.2em] uppercase pointer-events-none animate-bounce">
+                            学んだ
                           </div>
-                          <input
-                            type="range"
-                            min="0.3"
-                            max="1.2"
-                            step="0.1"
-                            value={speechRate}
-                            onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
-                            className="w-full h-3 rounded-full appearance-none cursor-pointer bg-slate-700 accent-sky-500 py-2"
-                          />
+                        )}
+                        <div className="relative z-10 flex flex-col items-center gap-6 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <h1 className={`m-0 font-bold text-white tracking-tight leading-tight ${frontWord.length > 20 ? 'text-3xl sm:text-5xl' :
+                              frontWord.length > 10 ? 'text-4xl sm:text-6xl' :
+                                'text-5xl sm:text-7xl'
+                              }`}>{formatSymbolicText(frontWord)}</h1>
+                            {frontSubText && (
+                              <p className="text-2xl sm:text-3xl text-sky-400/80 font-medium m-0">{formatSymbolicText(frontSubText)}</p>
+                            )}
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); speakText(frontWord); }} className="bg-sky-500/10 hover:bg-sky-500 text-sky-400 hover:text-slate-900 transition-all rounded-2xl p-4 shadow-lg active:scale-90" title="朗讀單字">
+                            <Volume2 size={40} />
+                          </button>
+                          {/* 語速調整滑桿 */}
+                          <div className="flex flex-col items-center gap-1.5 w-44" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex justify-between w-full text-[11px] font-medium px-0.5">
+                              <span className="text-slate-500">0.3</span>
+                              <span className="text-sky-400 font-bold">{speechRate.toFixed(1)}</span>
+                              <span className="text-slate-500">1.2</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="0.3"
+                              max="1.2"
+                              step="0.1"
+                              value={speechRate}
+                              onChange={(e) => setSpeechRate(parseFloat(e.target.value))}
+                              className="w-full h-3 rounded-full appearance-none cursor-pointer bg-slate-700 accent-sky-500 py-2"
+                            />
+                          </div>
+                          <div className="mt-4 text-slate-500 text-sm font-medium tracking-[0.3em] uppercase">點擊翻面查看</div>
                         </div>
-                        <div className="mt-4 text-slate-500 text-sm font-medium tracking-[0.3em] uppercase">點擊翻面查看</div>
                       </div>
-                    </div>
 
-                    {/* Back */}
-                    <div className="absolute w-full h-full backface-hidden bg-[#1E293B] rounded-[2.5rem] shadow-2xl border border-white/5 flex flex-col items-start justify-start p-10 sm:p-14 transition-transform duration-0 rotate-y-180 overflow-hidden box-border [transform:rotateY(180deg)_translateZ(0px)]">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent"></div>
-                      <div className="relative z-10 w-full h-full overflow-y-auto pr-2 custom-scrollbar">
-                        <ul className="space-y-8 list-none m-0">
-                          {backFields.map((field, idx) => {
-                            const isExample = exampleColumnIndex !== -1 && (headers[exampleColumnIndex] === field.label);
-                            return (
-                              <li key={idx} className="flex flex-col gap-2">
-                                <span className="text-sky-400/60 text-xs font-bold uppercase tracking-[0.2em]">{field.label}</span>
-                                {isExample ? (
-                                  <div className="bg-emerald-500/5 border-l-4 border-emerald-500 p-6 rounded-r-2xl italic text-emerald-100/90 text-2xl leading-relaxed font-serif">
-                                    {formatSymbolicText(field.value)}
-                                  </div>
-                                ) : (
-                                  <div className="text-white text-3xl font-medium leading-relaxed tracking-wide">
-                                    {formatSymbolicText(field.value)}
-                                  </div>
-                                )}
-                                {isExample && (
-                                  <button onClick={(e) => { e.stopPropagation(); speakText(field.value); }} className="self-end hover:text-emerald-400 text-slate-600 transition-all p-2 bg-white/5 rounded-xl border border-white/5 hover:border-emerald-500/50 flex items-center gap-2 text-xs" title="朗讀例句">
-                                    <Volume2 size={18} /> 朗讀例句
-                                  </button>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
+                      {/* Back */}
+                      <div className="absolute w-full h-full backface-hidden bg-[#1E293B] rounded-[2.5rem] shadow-2xl border border-white/5 flex flex-col items-start justify-start p-10 sm:p-14 transition-transform duration-0 rotate-y-180 overflow-hidden box-border [transform:rotateY(180deg)_translateZ(0px)]">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-emerald-500/5 to-transparent"></div>
+                        <div className="relative z-10 w-full h-full overflow-y-auto pr-2 custom-scrollbar">
+                          <ul className="space-y-8 list-none m-0">
+                            {backFields.map((field, idx) => {
+                              const isExample = exampleColumnIndex !== -1 && (headers[exampleColumnIndex] === field.label);
+                              return (
+                                <li key={idx} className="flex flex-col gap-2">
+                                  <span className="text-sky-400/60 text-xs font-bold uppercase tracking-[0.2em]">{field.label}</span>
+                                  {isExample ? (
+                                    <div className="bg-emerald-500/5 border-l-4 border-emerald-500 p-6 rounded-r-2xl italic text-emerald-100/90 text-2xl leading-relaxed font-serif">
+                                      {formatSymbolicText(field.value)}
+                                    </div>
+                                  ) : (
+                                    <div className="text-white text-3xl font-medium leading-relaxed tracking-wide">
+                                      {formatSymbolicText(field.value)}
+                                    </div>
+                                  )}
+                                  {isExample && (
+                                    <button onClick={(e) => { e.stopPropagation(); speakText(field.value); }} className="self-end hover:text-emerald-400 text-slate-600 transition-all p-2 bg-white/5 rounded-xl border border-white/5 hover:border-emerald-500/50 flex items-center gap-2 text-xs" title="朗讀例句">
+                                      <Volume2 size={18} /> 朗讀例句
+                                    </button>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
               </div> {/* end drag wrapper */}
             </div>
 
